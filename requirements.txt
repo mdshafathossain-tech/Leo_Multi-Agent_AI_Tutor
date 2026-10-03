@@ -1,0 +1,25 @@
+# ---- Leo: Multi-Agent AI Tutor ------------------------------------------
+# Python 3.10 - 3.13 recommended.
+# Lower bounds are used so pip can resolve a mutually compatible set.
+# After your first successful run, lock exact versions:  pip freeze > requirements.lock
+
+# Agent orchestration
+crewai>=0.100.0
+crewai-tools>=0.36.0        # optional web-search tool (SerperDevTool)
+litellm                     # needed for providers CrewAI has no native support for (e.g. groq/...)
+
+# LangChain ecosystem (LLM wrappers / utilities used alongside CrewAI)
+langchain>=0.3.0
+langchain-openai>=0.2.0
+
+# Data validation & structured output
+pydantic>=2.7,<3
+
+# Configuration / secrets
+python-dotenv>=1.0.1
+
+# UI
+streamlit>=1.40.0
+
+# Dev / testing
+pytest>=8.0.0

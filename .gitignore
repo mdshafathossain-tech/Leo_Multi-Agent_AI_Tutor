@@ -1,0 +1,20 @@
+# Secrets
+.env
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# CrewAI local memory / storage
+.crewai/
+db/
+storage/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/

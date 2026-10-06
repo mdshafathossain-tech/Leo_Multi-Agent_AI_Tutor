@@ -12,6 +12,7 @@ Also contains the parsing helpers that make LLM output safe to consume:
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from dataclasses import dataclass
@@ -76,6 +77,69 @@ def extract_json(text: Optional[str]) -> Any:
         except json.JSONDecodeError:
             continue
     raise OutputParseError("No valid JSON found in reply.")
+
+
+@dataclass
+class RecoveredOutput:
+    """Minimal stand-in for a CrewAI output when a reply is recovered from an API error."""
+
+    raw: str
+    pydantic: Any = None
+    json_dict: Any = None
+
+
+def recover_failed_generation(error_text: Optional[str]) -> Optional[str]:
+    """
+    Recover the model's intended JSON reply from a rejected tool call.
+
+    Some providers (e.g. Groq with gpt-oss models) answer HTTP 400 ``tool_use_failed`` when the
+    model tries to deliver its final JSON as a call to a non-existent tool named "json". The
+    error body still contains the intended reply in ``failed_generation``.
+
+    Returns the reply as a JSON string, or None when nothing safe can be recovered (for example
+    when the rejected call targeted a real tool, whose arguments are not a final answer).
+    """
+    if not error_text or "failed_generation" not in error_text:
+        return None
+
+    generation: Any = None
+    # 1) The exception text embeds the provider's JSON body as a Python dict repr.
+    start, end = error_text.find("{'"), error_text.rfind("}")
+    if start != -1 and end > start:
+        try:
+            body = ast.literal_eval(error_text[start : end + 1])
+            err = body.get("error", body) if isinstance(body, dict) else None
+            if isinstance(err, dict):
+                generation = err.get("failed_generation")
+        except (ValueError, SyntaxError):
+            generation = None
+    # 2) Fallback: pull the quoted value out of the raw text.
+    if generation is None:
+        match = re.search(r"failed_generation['\"]?\s*:\s*['\"](.*)['\"]\s*\}", error_text, re.DOTALL)
+        if match:
+            generation = match.group(1).replace("\\n", "\n").replace("\\'", "'")
+    if not isinstance(generation, str):
+        return None
+
+    try:
+        data = extract_json(generation)
+    except OutputParseError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    if "arguments" in data:  # {"name": "json", "arguments": {...}}
+        if str(data.get("name", "json")).strip().lower() != "json":
+            return None  # a real tool was called; its arguments are not the final answer
+        args = data["arguments"]
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                return None
+        data = args
+    if not isinstance(data, dict) or not data:
+        return None
+    return json.dumps(data, ensure_ascii=False)
 
 
 def output_text(output: Any) -> str:

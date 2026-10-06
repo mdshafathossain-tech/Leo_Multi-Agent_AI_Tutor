@@ -42,7 +42,9 @@ A student sent this request: "{student_input}"
    reply with a friendly clarifying question.
 3. Otherwise output JSON: {{"topic": str, "learner_level": "beginner|intermediate|advanced",
    "clear": true, "notes": str}}.
-Keep the topic to one concise phrase."""
+Keep the topic to one concise phrase.
+Write your final answer directly as text. Never call a tool (for example one named "json")
+to deliver it."""
 
 EXPLAINER_TASK_TEMPLATE = """\
 Teach the topic "{topic}" to a {learner_level} learner.
@@ -98,7 +100,8 @@ Steps:
 4. Compute overall_score_pct from points earned / total points.
 5. If overall_score_pct < {pass_threshold}: recommendation = "reteach", list weak_concepts
    and write reteach_focus for the Explainer. Otherwise recommendation = "proceed".
-Return ONLY JSON matching the EvaluationResult schema."""
+Return ONLY JSON matching the EvaluationResult schema, written directly as your final answer
+(do not call a tool such as "json" to deliver it)."""
 
 
 # ---------------------------------------------------------------------------

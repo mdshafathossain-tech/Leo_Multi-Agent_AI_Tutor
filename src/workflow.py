@@ -41,6 +41,7 @@ from .config import Settings, get_settings
 from .models import Difficulty, EvaluationResult, Quiz, TutorState
 from .tasks import (
     OutputParseError,
+    RecoveredOutput,
     TaskBuildError,
     build_coordinator_task,
     build_evaluator_task,
@@ -49,6 +50,7 @@ from .tasks import (
     output_text,
     parse_intake,
     parse_structured,
+    recover_failed_generation,
 )
 
 logger = logging.getLogger("leo.workflow")
@@ -404,11 +406,14 @@ class LeoTutorWorkflow:
         model_cls: Optional[type] = None,
     ) -> Any:
         """
-        Build and run one task. Structured tasks (``model_cls`` set) get one retry
-        with a corrective hint if the LLM call fails or the output doesn't validate.
+        Build and run one task. Every task gets one retry with a corrective hint if the LLM
+        call fails or (for structured tasks) the output doesn't validate. When a provider
+        rejects a JSON reply that the model tried to send as a tool call, the intended reply
+        is recovered from the error instead of failing (see ``recover_failed_generation``).
         Returns the parsed model, or the raw CrewAI output for free-text tasks.
         """
-        attempts = self.MAX_ATTEMPTS_PER_TASK if model_cls else 1
+        attempts = self.MAX_ATTEMPTS_PER_TASK
+        expects_json = model_cls is not None or label == "Coordinator"
         hint = ""
         last_exc: Optional[Exception] = None
 
@@ -420,7 +425,14 @@ class LeoTutorWorkflow:
 
             self._emit(label, "start", f"Running (attempt {attempt}/{attempts})")
             try:
-                output = self._runner(agent, task, label)
+                try:
+                    output = self._runner(agent, task, label)
+                except Exception as run_exc:
+                    recovered = recover_failed_generation(str(run_exc)) if expects_json else None
+                    if recovered is None:
+                        raise
+                    self._emit(label, "warning", "Recovered the reply from a rejected tool call (provider quirk).")
+                    output = RecoveredOutput(raw=recovered)
                 if model_cls is None:
                     self._emit(label, "done", "Task finished")
                     return output
@@ -430,11 +442,17 @@ class LeoTutorWorkflow:
             except Exception as exc:  # LLM/network errors and OutputParseError alike
                 last_exc = exc
                 if attempt < attempts:
-                    self._emit(label, "warning", f"Attempt {attempt} failed: {exc}. Retrying once.")
-                    hint = (
-                        f"Your previous attempt failed ({exc}). "
-                        "Return ONLY valid JSON that matches the required schema, with no extra text."
-                    )
+                    self._emit(label, "warning", f"Attempt {attempt} failed: {str(exc)[:200]}. Retrying once.")
+                    if model_cls is not None:
+                        hint = (
+                            f"Your previous attempt failed ({str(exc)[:300]}). "
+                            "Return ONLY valid JSON that matches the required schema, with no extra text."
+                        )
+                    else:
+                        hint = (
+                            f"Your previous attempt failed ({str(exc)[:300]}). Write your final answer "
+                            "directly as plain text; never call a tool (for example one named 'json') to deliver it."
+                        )
                     continue
                 break
 

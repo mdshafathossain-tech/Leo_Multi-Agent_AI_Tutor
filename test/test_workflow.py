@@ -87,3 +87,61 @@ def test_invalid_transition_and_blank_answers():
     with pytest.raises(WorkflowError):
         wf.submit_answers({"q1": "  "})
     assert wf.phase == Phase.AWAITING_ANSWERS
+
+
+def groq_json_tool_error(payload):
+    """Build the exception text Groq produces when the model 'calls' a tool named json."""
+    body = {"error": {
+        "message": "Tool call validation failed: attempted to call tool 'json' which was not in request.tools",
+        "type": "invalid_request_error", "code": "tool_use_failed",
+        "failed_generation": json.dumps({"name": "json", "arguments": payload}, indent=1),
+    }}
+    return RuntimeError(f"Error code: 400 - {body}")
+
+
+def test_coordinator_recovers_from_rejected_json_tool_call():
+    wf = make_workflow([1.0])
+    original = wf._runner
+    events = []
+    wf.on_event = events.append
+
+    def flaky(agent, task, label):
+        if label == "Coordinator":
+            raise groq_json_tool_error(
+                {"topic": "supply and demand", "learner_level": "beginner", "clear": True, "notes": "ok"}
+            )
+        return original(agent, task, label)
+
+    wf._runner = flaky
+    assert wf.start("Explain supply and demand with examples") == Phase.EXPLANATION_REVIEW
+    assert wf.state.topic == "supply and demand"
+    assert any(e.kind == "warning" and "Recovered" in e.message for e in events)
+
+
+def test_free_text_task_is_retried_once_after_a_transient_error():
+    wf = make_workflow([1.0])
+    original = wf._runner
+    calls = {"explainer": 0}
+
+    def flaky(agent, task, label):
+        if label == "Explainer":
+            calls["explainer"] += 1
+            if calls["explainer"] == 1:
+                raise RuntimeError("temporary provider error")
+        return original(agent, task, label)
+
+    wf._runner = flaky
+    assert wf.start("addition") == Phase.EXPLANATION_REVIEW
+    assert calls["explainer"] == 2
+
+
+def test_unrecoverable_error_still_fails_cleanly():
+    wf = make_workflow([1.0])
+
+    def always_fail(agent, task, label):
+        raise RuntimeError("Error code: 404 - model_not_found")
+
+    wf._runner = always_fail
+    with pytest.raises(WorkflowError):
+        wf.start("addition")
+    assert wf.phase == Phase.INTAKE

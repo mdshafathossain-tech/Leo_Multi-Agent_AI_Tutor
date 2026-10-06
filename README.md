@@ -18,7 +18,7 @@
 
 ## 📖 Overview
 
-Leo is an interactive study assistant built for **Assignment 24**. You type what you want to learn; Leo hands your request through a team of four specialised agents, and you stay in control at every step.
+Leo is an interactive study assistant built for **Assignment 26**. You type what you want to learn; Leo hands your request through a team of four specialised agents, and you stay in control at every step.
 
 1. **Ask** — the *Coordinator* checks your request (and asks a follow-up question if it is vague).
 2. **Learn** — the *Explainer* writes a structured lesson. You review it and can ask for changes.
@@ -330,4 +330,4 @@ The suite needs no API key or network. It replaces the LLM runner with a fake an
 
 ## 👤 Author
 
-Built by **Shafat** ([@mdshafathossain-tech](https://github.com/mdshafathossain-tech)) as Assignment 24: *Leo: Multi-Agent AI Tutor*.
+Built by **Shafat** ([@mdshafathossain-tech](https://github.com/mdshafathossain-tech)) as Assignment 26: *Leo: Multi-Agent AI Tutor*.

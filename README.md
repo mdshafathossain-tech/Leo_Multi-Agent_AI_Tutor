@@ -38,7 +38,7 @@ Leo is an interactive study assistant built for **Assignment 24**. You type what
 | 🧠 **Explicit context handoffs** | One `TutorState` object carries topic → explanation → quiz → answers → evaluation between agents |
 | 📚 **Session history** | Every explanation version and quiz attempt is kept; download the full session as a JSON report |
 | 🔐 **No hardcoded secrets** | Keys come from environment variables (`.env` locally, Secrets on Streamlit Cloud) |
-| ✅ **Tested without an API key** | 21 pytest tests, including the Streamlit UI flow, run against a fake LLM |
+| ✅ **Tested without an API key** | 26 pytest tests, including the Streamlit UI flow, run against a fake LLM |
 
 <!--
 ## 🖼 Screenshots
@@ -129,7 +129,7 @@ Only the Coordinator is allowed to delegate; the specialists stay focused on one
 Leo uses a **custom, state-managed sequential pipeline with two human gates and a feedback loop**, implemented in [`src/workflow.py`](src/workflow.py). Each step runs one agent as a single-task CrewAI `Crew`. This was chosen over CrewAI's built-in sequential or hierarchical processes because the loop and the human pauses need explicit control:
 
 - **Routing is enforced in code.** The Evaluator's `recommendation` is advisory; `LEO_PASS_THRESHOLD` and `LEO_MAX_RETEACH_LOOPS` decide.
-- **Structured tasks retry once** with a corrective hint when the JSON does not validate.
+- **Every task retries once** with a corrective hint, and a JSON reply that a provider rejects as a bad tool call (a known Groq `tool_use_failed` quirk) is recovered from the error instead of failing.
 - **A failed step never corrupts state.** The phase stays where it was, `WorkflowError` is raised, and the UI offers a **Retry** button.
 - **Scores are verified.** The overall score is recomputed from per-question results, and a corrected score is logged when the LLM's figure is off.
 
@@ -302,6 +302,7 @@ The suite needs no API key or network. It replaces the LLM runner with a fake an
 | `ConfigError: unable to infer type for attribute` on Streamlit Cloud | The app runs on Python 3.14. Redeploy with Python 3.12 |
 | `The model ... does not exist or you do not have access to it` | Pick a model your key can use and update `LEO_MODEL` |
 | `LiteLLM fallback package is not installed` | `pip install litellm` |
+| `tool_use_failed … attempted to call tool 'json'` (Groq) | Handled automatically: Leo recovers the reply and retries once. If it still fails, click **Retry** or try another model |
 | `invalid JSON schema for tool …` | A tool without arguments was added. Give every tool at least one argument |
 | `cache_breakpoint is unsupported` (Groq) | Use the `groq/` prefix so requests go through the OpenAI-compatible route in `src/config.py` |
 | Rate-limit (429) errors | Wait a minute, then use **Retry** in the UI |
